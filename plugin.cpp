@@ -59,7 +59,7 @@ void WINAPI GetPluginInfoW(PluginInfo* info)
 
 static inline INT_PTR EditCtrl(EDITOR_CONTROL_COMMANDS cmd, void* param) noexcept
 {
-	return _PSI.EditorControl(-1, cmd, 0, param);
+	return _PSI.EditorControl(CURRENT_EDITOR, cmd, 0, param);
 }
 
 HANDLE WINAPI OpenW(const OpenInfo* info)
@@ -70,36 +70,45 @@ HANDLE WINAPI OpenW(const OpenInfo* info)
 
 	EditorInfo ei = { sizeof(ei) };
 	EditCtrl(ECTL_GETINFO, &ei);
-	if (ei.BlockType != BTYPE_STREAM) {
-		_PSI.Message(&_FPG, &_FPG, FMSG_ALLINONE | FMSG_MB_OK,
-					 nullptr, (const wchar_t* const*)L"Base64\nThere is no selection to decode!", 0, 0);
-		return nullptr;
-	}
 
 	EditorGetString egs = { sizeof(egs) };
-
 	std::wstring selectedString;
-	for (egs.StringNumber = ei.BlockStartLine; egs.StringNumber < ei.TotalLines; egs.StringNumber++) {
-		EditCtrl(ECTL_GETSTRING, &egs);
 
-		if (egs.SelStart == -1) {
-			break;
+	if (ei.BlockType == BTYPE_STREAM) {
+		for (egs.StringNumber = ei.BlockStartLine; egs.StringNumber < ei.TotalLines; egs.StringNumber++) {
+			EditCtrl(ECTL_GETSTRING, &egs);
+
+			if (egs.SelStart == -1) {
+				break;
+			}
+
+			if (!selectedString.empty()) {
+				selectedString.push_back(L'\n');
+			}
+
+			const auto nStart = egs.SelStart;
+			const auto nEnd = (egs.SelEnd == -1) ? egs.StringLength : egs.SelEnd;
+			const auto nLen = (nEnd - nStart);
+
+			if (nLen > 0) {
+				selectedString.append(egs.StringText + nStart, nLen);
+			}
 		}
+	} else {
+		for (egs.StringNumber = 0; egs.StringNumber < ei.TotalLines; egs.StringNumber++) {
+			EditCtrl(ECTL_GETSTRING, &egs);
 
-		if (!selectedString.empty()) {
-			selectedString.push_back(L'\n');
-		}
+			if (!selectedString.empty()) {
+				selectedString.push_back(L'\n');
+			}
 
-		const auto nStart = egs.SelStart;
-		const auto nEnd = (egs.SelEnd == -1) ? egs.StringLength : egs.SelEnd;
-		const auto nLen = (nEnd - nStart);
-
-		if (nLen > 0) {
-			selectedString.append(egs.StringText + nStart, nLen);
+			selectedString.append(egs.StringText, egs.StringLength);
 		}
 	}
 
 	if (selectedString.empty()) {
+		_PSI.Message(&_FPG, &_FPG, FMSG_ALLINONE | FMSG_MB_OK,
+					 nullptr, (const wchar_t* const*)L"Base64 decoder\nThere is no data", 0, 0);
 		return nullptr;
 	}
 
@@ -130,12 +139,23 @@ HANDLE WINAPI OpenW(const OpenInfo* info)
 		outputText = macaron::Base64::Encode(multiByteString);
 	}
 
-	if (!outputText.empty() && EditCtrl(ECTL_DELETEBLOCK, nullptr)) {
-		convertLen = MultiByteToWideChar((UINT)ei.CodePage, 0, outputText.c_str(), -1, nullptr, 0) - 1;
-		if (convertLen > 0) {
-			std::wstring widecharString(convertLen, L'\0');
-			MultiByteToWideChar((UINT)ei.CodePage, 0, outputText.c_str(), -1, &widecharString[0], convertLen + 1);
-			EditCtrl(ECTL_INSERTTEXT, &widecharString[0]);
+	if (!outputText.empty()) {
+		if (ei.BlockType != BTYPE_STREAM) {
+			EditorSelect es = { sizeof(es) };
+			es.BlockType = BTYPE_STREAM;
+			es.BlockStartLine = 0;
+			es.BlockHeight = ei.TotalLines;
+			es.BlockWidth = -1;
+			EditCtrl(ECTL_SELECT, &es);
+		}
+
+		if (EditCtrl(ECTL_DELETEBLOCK, nullptr)) {
+			convertLen = MultiByteToWideChar((UINT)ei.CodePage, 0, outputText.c_str(), -1, nullptr, 0) - 1;
+			if (convertLen > 0) {
+				std::wstring widecharString(convertLen, L'\0');
+				MultiByteToWideChar((UINT)ei.CodePage, 0, outputText.c_str(), -1, &widecharString[0], convertLen + 1);
+				EditCtrl(ECTL_INSERTTEXT, &widecharString[0]);
+			}
 		}
 	}
 
