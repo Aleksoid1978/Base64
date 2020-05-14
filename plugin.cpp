@@ -68,6 +68,16 @@ HANDLE WINAPI OpenW(const OpenInfo* info)
 		return nullptr;
 	}
 
+	const FarMenuItem items[] = {
+		{0,  L"Base64 decode"},
+		{MIF_SEPARATOR},
+		{0,  L"Base64 encode"}
+	};
+	const auto nDecoderType = _PSI.Menu(&_FPG, &_FPG, -1, -1, 0,
+		FMENU_AUTOHIGHLIGHT | FMENU_CHANGECONSOLETITLE | FMENU_WRAPMODE,
+		L"Choose decoder",
+		nullptr, nullptr, nullptr, nullptr, (FarMenuItem*)items, std::size(items));
+
 	EditorInfo ei = { sizeof(ei) };
 	EditCtrl(ECTL_GETINFO, &ei);
 
@@ -82,27 +92,31 @@ HANDLE WINAPI OpenW(const OpenInfo* info)
 				break;
 			}
 
-			if (!selectedString.empty()) {
+			if (egs.StringNumber > ei.BlockStartLine && nDecoderType == 2) {
 				selectedString.push_back(L'\n');
 			}
 
-			const auto nStart = egs.SelStart;
-			const auto nEnd = (egs.SelEnd == -1) ? egs.StringLength : egs.SelEnd;
-			const auto nLen = (nEnd - nStart);
+			if (egs.StringLength > 0) {
+				const auto nStart = egs.SelStart;
+				const auto nEnd = (egs.SelEnd == -1) ? egs.StringLength : egs.SelEnd;
+				const auto nLen = (nEnd - nStart);
 
-			if (nLen > 0) {
-				selectedString.append(egs.StringText + nStart, nLen);
+				if (nLen > 0) {
+					selectedString.append(egs.StringText + nStart, nLen);
+				}
 			}
 		}
 	} else {
 		for (egs.StringNumber = 0; egs.StringNumber < ei.TotalLines; egs.StringNumber++) {
 			EditCtrl(ECTL_GETSTRING, &egs);
 
-			if (!selectedString.empty()) {
+			if (egs.StringNumber > 0 && nDecoderType == 2) {
 				selectedString.push_back(L'\n');
 			}
 
-			selectedString.append(egs.StringText, egs.StringLength);
+			if (egs.StringLength > 0) {
+				selectedString.append(egs.StringText, egs.StringLength);
+			}
 		}
 	}
 
@@ -119,15 +133,6 @@ HANDLE WINAPI OpenW(const OpenInfo* info)
 		WideCharToMultiByte((UINT)ei.CodePage, 0, selectedString.c_str(), -1, &multiByteString[0], convertLen + 1, 0, 0);
 	}
 
-	const FarMenuItem items[] = {
-		{0,  L"Base64 decode"},
-		{MIF_SEPARATOR},
-		{0,  L"Base64 encode"}
-	};
-	const auto nDecoderType = _PSI.Menu(&_FPG, &_FPG, -1, -1, 0,
-										FMENU_AUTOHIGHLIGHT | FMENU_CHANGECONSOLETITLE | FMENU_WRAPMODE,
-										L"Choose decoder",
-										nullptr, nullptr, nullptr, nullptr, (FarMenuItem*)items, std::size(items));
 	std::string outputText;
 	if (nDecoderType == 0) {
 		macaron::Base64::Decode(multiByteString, outputText);

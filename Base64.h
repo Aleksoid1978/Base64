@@ -93,7 +93,7 @@ class Base64 {
     };
 
     size_t in_len = input.size();
-    //if (in_len % 4 != 0) return false;
+    if (in_len % 4 != 0) return false;
 
     size_t out_len = in_len / 4 * 3;
     if (input[in_len - 1] == '=') out_len--;
